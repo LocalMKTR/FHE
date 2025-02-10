@@ -19,31 +19,48 @@ interface WordPressPost {
   }
 }
 
+interface WordPressCategory {
+  id: number
+  name: string
+  description: string
+}
+
 interface PageProps {
+  params: { id: string }
   searchParams: { page?: string }
 }
 
 const POSTS_PER_PAGE = 10
 
-async function getPosts(page: number): Promise<{ posts: WordPressPost[]; totalPages: number }> {
-  const res = await fetch(`${process.env.WP_API_URL}/posts?page=${page}&per_page=${POSTS_PER_PAGE}&_embed`)
-  if (!res.ok) {
-    throw new Error(`HTTP error! status: ${res.status}`)
-  }
+async function getCategory(id: string): Promise<WordPressCategory> {
+  const res = await fetch(`${process.env.WP_API_URL}/categories/${id}`)
+  if (!res.ok) throw new Error(`Failed to fetch category: ${res.status}`)
+  return res.json()
+}
+
+async function getPostsByCategory(id: string, page: number): Promise<{ posts: WordPressPost[]; totalPages: number }> {
+  const res = await fetch(
+    `${process.env.WP_API_URL}/posts?categories=${id}&page=${page}&per_page=${POSTS_PER_PAGE}&_embed`,
+  )
+  if (!res.ok) throw new Error(`Failed to fetch posts: ${res.status}`)
   const posts = await res.json()
   const totalPages = Number.parseInt(res.headers.get("X-WP-TotalPages") || "0", 10)
   return { posts, totalPages }
 }
 
-export default async function PostsPage({ searchParams }: PageProps) {
+export default async function CategoryPage({ params, searchParams }: PageProps) {
   const currentPage = Number(searchParams.page) || 1
 
   try {
-    const { posts, totalPages } = await getPosts(currentPage)
+    const category = await getCategory(params.id)
+    const { posts, totalPages } = await getPostsByCategory(params.id, currentPage)
 
     return (
       <main className="px-7 pt-24 pb-16 max-w-4xl mx-auto">
-        <h1 className="text-4xl font-semibold mb-8">All Posts</h1>
+        <h1 className="text-4xl font-semibold mb-4">{category.name}</h1>
+        {category.description && (
+          <div className="text-gray-600 mb-8" dangerouslySetInnerHTML={{ __html: category.description }} />
+        )}
         {posts.length > 0 ? (
           <>
             <ul className="space-y-12">
@@ -89,19 +106,25 @@ export default async function PostsPage({ searchParams }: PageProps) {
                 </li>
               ))}
             </ul>
-            <Pagination currentPage={currentPage} totalPages={totalPages} baseUrl="/posts" />
+            <Pagination currentPage={currentPage} totalPages={totalPages} baseUrl={`/category/${params.id}`} />
           </>
         ) : (
-          <p>No posts found.</p>
+          <p>No posts found in this category.</p>
         )}
+        <Link href="/posts" className="mt-8 inline-block text-blue-600 hover:underline">
+          ← Back to All Posts
+        </Link>
       </main>
     )
   } catch (error) {
-    console.error("Error fetching posts:", error)
+    console.error("Error fetching category or posts:", error)
     return (
       <main className="px-7 pt-24 text-center">
         <h1 className="text-4xl font-semibold mb-7">Error</h1>
         <p className="text-red-500 mb-6">{error instanceof Error ? error.message : "An unexpected error occurred"}</p>
+        <Link href="/posts" className="text-blue-600 hover:underline">
+          Back to All Posts
+        </Link>
       </main>
     )
   }
